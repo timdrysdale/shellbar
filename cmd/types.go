@@ -21,8 +21,8 @@ type Client struct {
 	// string representing the path the client connected to
 	topic string
 
-	// is client allowed to provide input to the crossbar?
-	broadcaster bool
+	// is this websocket client connected to the service?
+	server bool
 
 	stats *Stats
 
@@ -50,7 +50,7 @@ type ReportStats struct {
 type ClientReport struct {
 	Topic string `json:"topic"`
 
-	Broadcaster bool `json:"broadcaster"`
+	Server bool `json:"server"`
 
 	Connected string `json:"connected"`
 

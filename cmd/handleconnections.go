@@ -113,11 +113,11 @@ func (c *Client) statsReporter() {
 				}
 
 				report := &ClientReport{
-					Topic:       client.topic,
-					Broadcaster: client.broadcaster,
-					Connected:   client.stats.connectedAt.String(),
-					RemoteAddr:  client.remoteAddr,
-					UserAgent:   client.userAgent,
+					Topic:      client.topic,
+					Server:     client.server,
+					Connected:  client.stats.connectedAt.String(),
+					RemoteAddr: client.remoteAddr,
+					UserAgent:  client.userAgent,
 					Stats: RxTx{
 						Tx: tx,
 						Rx: rx,
@@ -303,17 +303,17 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 	// so enforce in readPump by ignoring messages when the client has
 	// no permission to input messages to the crossbar for broadcast
 	// i.e. any client connecting to /out/<rest/of/path>
-	broadcaster := true
+
+	server := false
+
 	topic := slashify(r.URL.Path)
-	if strings.HasPrefix(topic, "/out/") {
-		// we're a receiver-only, so
-		// prevent any messages being broadcast from this client
-		broadcaster = false
-	} else if strings.HasPrefix(topic, "/in/") {
-		// we're a sender to receiver only clients, hence
+
+	if strings.HasPrefix(topic, "/serve/") {
+		// we're a server, so we get all messages, and use srgob
+		server = true
 		// convert topic so we write to those receiving clients
-		topic = strings.Replace(topic, "/in", "/out", 1)
-	} // else do nothing i.e. permit bidirectional messaging at other endpoints
+		topic = strings.Replace(topic, "/serve", "/", 1)
+	}
 
 	// initialise statistics
 	tx := &Frames{size: welford.New(), ns: welford.New()}
@@ -321,21 +321,21 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 	stats := &Stats{connectedAt: time.Now(), tx: tx, rx: rx}
 
 	client := &Client{hub: hub,
-		conn:        conn,
-		send:        make(chan message, 256),
-		topic:       topic,
-		broadcaster: broadcaster,
-		stats:       stats,
-		name:        uuid.New().String(),
-		userAgent:   r.UserAgent(),
-		remoteAddr:  r.Header.Get("X-Forwarded-For"),
+		conn:       conn,
+		send:       make(chan message, 256),
+		topic:      topic,
+		server:     server,
+		stats:      stats,
+		name:       uuid.New().String(),
+		userAgent:  r.UserAgent(),
+		remoteAddr: r.Header.Get("X-Forwarded-For"),
 	}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
 	go client.writePump(closed)
-	go client.readPump(broadcaster)
+	go client.readPump(server)
 }
 
 func serveStats(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Request) {
