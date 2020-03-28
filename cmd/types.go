@@ -26,7 +26,7 @@ type Client struct {
 
 	stats *Stats
 
-	name string
+	ID string
 
 	userAgent string
 

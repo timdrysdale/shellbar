@@ -193,7 +193,7 @@ func (c *Client) statsManager(closed <-chan struct{}) {
 // The application runs readPump in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
-func (c *Client) readPump(broadcaster bool) {
+func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -210,22 +210,16 @@ func (c *Client) readPump(broadcaster bool) {
 			break
 		}
 
-		if broadcaster {
+		c.hub.broadcast <- message{sender: *c, data: data, mt: mt}
 
-			c.hub.broadcast <- message{sender: *c, data: data, mt: mt}
-
-			t := time.Now()
-			if c.stats.tx.ns.Count() > 0 {
-				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
-			} else {
-				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
-			}
-			c.stats.tx.last = t
-			c.stats.tx.size.Add(float64(len(data)))
-
+		t := time.Now()
+		if c.stats.tx.ns.Count() > 0 {
+			c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
 		} else {
-			log.WithFields(log.Fields{"data": data, "sender": c, "topic": c.topic, "mt": mt}).Warn("Incoming message from non-broadcaster")
+			c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
 		}
+		c.stats.tx.last = t
+		c.stats.tx.size.Add(float64(len(data)))
 
 	}
 }
@@ -299,11 +293,7 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// reuse our existing hub which does not know about permissions
-	// so enforce in readPump by ignoring messages when the client has
-	// no permission to input messages to the crossbar for broadcast
-	// i.e. any client connecting to /out/<rest/of/path>
-
+	ID := uuid.New().String()
 	server := false
 
 	topic := slashify(r.URL.Path)
@@ -313,6 +303,7 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 		server = true
 		// convert topic so we write to those receiving clients
 		topic = strings.Replace(topic, "/serve", "/", 1)
+		ID = "*" //we want to receive every message
 	}
 
 	// initialise statistics
@@ -322,20 +313,20 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 
 	client := &Client{hub: hub,
 		conn:       conn,
+		ID:         ID,
+		remoteAddr: r.Header.Get("X-Forwarded-For"),
 		send:       make(chan message, 256),
-		topic:      topic,
 		server:     server,
 		stats:      stats,
-		name:       uuid.New().String(),
+		topic:      topic,
 		userAgent:  r.UserAgent(),
-		remoteAddr: r.Header.Get("X-Forwarded-For"),
 	}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
 	go client.writePump(closed)
-	go client.readPump(server)
+	go client.readPump()
 }
 
 func serveStats(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Request) {
