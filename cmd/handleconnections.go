@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"math"
@@ -14,6 +16,7 @@ import (
 	"github.com/eclesh/welford"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/timdrysdale/srgob"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -210,19 +213,77 @@ func (c *Client) readPump() {
 			break
 		}
 
-		c.hub.broadcast <- message{sender: *c, data: data, mt: mt}
+		var buf bytes.Buffer
 
-		t := time.Now()
-		if c.stats.tx.ns.Count() > 0 {
-			c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
+		didSend := false //only update stats for this if incoming message handled errorfree
+
+		if c.server {
+			// decode the gob and identify the recipient ID
+			// new en/decoders are cheap, renew every message
+			decoder := gob.NewDecoder(&buf)
+			var sr srgob.Message
+			err = decoder.Decode(&sr)
+
+			if err != nil {
+				log.WithField("Error", err.Error()).Error("Decoding gob from server")
+			} else {
+				// send only the payload to the non-server client, not a gob
+				c.hub.broadcast <- message{sender: *c, data: sr.Data, mt: mt, ID: sr.ID}
+				didSend = true
+			}
+
 		} else {
-			c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
-		}
-		c.stats.tx.last = t
-		c.stats.tx.size.Add(float64(len(data)))
+			// we're a connector sending to the server
+			// gob up the payload with connector's ID
 
+			sr := srgob.Message{
+				ID:   c.ID,
+				Data: data,
+			}
+
+			encoder := gob.NewEncoder(&buf)
+			err := encoder.Encode(sr)
+
+			if err != nil {
+				log.WithField("Error", err.Error()).Error("Encoding gob to send to server")
+			} else {
+				// send the gob to the server (id "*")
+				c.hub.broadcast <- message{sender: *c, data: buf.Bytes(), mt: mt, ID: "*"}
+				didSend = true
+			}
+
+		}
+
+		if didSend {
+			t := time.Now()
+			if c.stats.tx.ns.Count() > 0 {
+				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
+			} else {
+				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
+			}
+			c.stats.tx.last = t
+			c.stats.tx.size.Add(float64(len(data)))
+		}
 	}
 }
+
+/*
+
+	var buf bytes.Buffer
+
+	m1 := Message{
+		ID:   "5678-efgh",
+		Data: []byte("This is a test message\nIsn't it"),
+	}
+
+	expectedString := "5678-efgh 31"
+
+	encoder := gob.NewEncoder(&buf)
+
+	err := encoder.Encode(m1)
+
+
+*/
 
 // writePump pumps messages from the hub to the websocket connection.
 //

@@ -79,6 +79,7 @@ type Frames struct {
 
 // messages will be wrapped in this struct for muxing
 type message struct {
+	ID     string // recipient ID
 	sender Client
 	mt     int
 	data   []byte //text data are converted to/from bytes as needed
