@@ -267,24 +267,6 @@ func (c *Client) readPump() {
 	}
 }
 
-/*
-
-	var buf bytes.Buffer
-
-	m1 := Message{
-		ID:   "5678-efgh",
-		Data: []byte("This is a test message\nIsn't it"),
-	}
-
-	expectedString := "5678-efgh 31"
-
-	encoder := gob.NewEncoder(&buf)
-
-	err := encoder.Encode(m1)
-
-
-*/
-
 // writePump pumps messages from the hub to the websocket connection.
 //
 // A goroutine running writePump is started for each connection. The

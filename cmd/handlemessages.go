@@ -41,7 +41,7 @@ func (h *Hub) run() {
 		case message := <-h.broadcast:
 			topic := message.sender.topic
 			for client := range h.clients[topic] {
-				if client.ID != message.sender.ID {
+				if client.ID == message.ID {
 					select {
 					case client.send <- message:
 					default:
