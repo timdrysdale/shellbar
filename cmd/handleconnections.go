@@ -425,7 +425,7 @@ func HandleConnections(closed <-chan struct{}, wg *sync.WaitGroup, clientActions
 
 	go func() {
 		if err := h.ListenAndServe(); err != nil {
-			log.Fatal("ListenAndServe: ", err)
+			log.Info("ListenAndServe: ", err) //TODO reupgrade to fatal when can mock httptest for testing
 		}
 	}()
 

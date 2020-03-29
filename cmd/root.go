@@ -64,12 +64,11 @@ and clients (connecting to /<route>) speaking []byte.`,
 
 		if development {
 			// development environment
-			fmt.Printf("Devmode? %v\n", development)
-			fmt.Printf("listening on %v\n", addr)
+			fmt.Println("Development mode - logging output to stdout")
+			fmt.Printf("Listening on %v\n", addr)
 			log.SetFormatter(&log.TextFormatter{})
 			log.SetLevel(log.TraceLevel)
 			log.SetOutput(os.Stdout)
-			fmt.Println("Setting log output to stdout")
 
 		} else {
 
@@ -133,7 +132,7 @@ func init() {
 
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVarP(&listen, "listen", "l", "127.0.0.1:8080", "http://<ip>:<port> to listen on (default is 127.0.0.1:8080)")
+	rootCmd.PersistentFlags().StringVarP(&listen, "listen", "l", "127.0.0.1:8080", "<ip>:<port> to listen on (default is 127.0.0.1:8080)")
 	rootCmd.PersistentFlags().Int64VarP(&bufferSize, "buffer", "b", 32768, "bufferSize in bytes (default is 32,768)")
 	rootCmd.PersistentFlags().StringVarP(&logFile, "log", "f", "", "log file (default is STDOUT)")
 	rootCmd.PersistentFlags().StringVarP(&cpuprofile, "cpuprofile", "c", "", "write cpu profile to file")
@@ -141,7 +140,7 @@ func init() {
 
 }
 
-// initConfig reads in config file and ENV variables if set.
+// initConfig - no config file; use ENV variables where available
 func initConfig() {
 	viper.SetEnvPrefix("SHELLBAR")
 	viper.AutomaticEnv() // read in environment variables that match

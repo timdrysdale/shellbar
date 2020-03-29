@@ -15,12 +15,12 @@
   </style>
   <body>
 
-	<h1>Crossbar stats</h1>
+	<h1>Shellbar stats</h1>
 
-	<table id="broadcaster">
+	<table id="server">
       <thead>
         <tr>
-          <th colspan="99">Broadcasters</th>
+          <th colspan="99">Servers</th>
         </tr>
       </thead>
       <tbody>
@@ -42,14 +42,26 @@
 
 <script>
 
-  var broadcastTable
+  var serverTable
   var receiveTable
   let bcols = ["topic","last","Avg Bytes","FPS", "Connected","remoteAddr","userAgent"]
   let rcols = ["topic","last","Avg size","FPS", "Connected","remoteAddr","userAgent"]
 
   var somePackage = {};
   somePackage.connect = function()  {
-  var ws = new WebSocket('wss://'+document.location.host+'/ws');
+
+	  var scheme = 'wss://';
+	  
+	  if (document.location.host.startsWith('localhost')){	  
+		  scheme = 'ws://'
+	  }
+	  if (document.location.host.startsWith('127.0.0.1')){	  
+		  scheme = 'ws://'
+	  }
+	  
+	  
+  var ws = new WebSocket(scheme+document.location.host+'/ws');
+  
   ws.onopen = function() {
   console.log('ws connected');
   somePackage.ws = ws;
@@ -64,7 +76,7 @@
   var msg = JSON.parse(msgevent.data);
   console.log('in :', msg);
   // message received, do something
-  addRow(broadcastTable, receiveTable, msg)
+  addRow(serverTable, receiveTable, msg)
   };
   };
 
@@ -77,11 +89,11 @@
   this.ws.send(window.JSON.stringify(msg));
   };
 
-  function addRow(broadcastTable, receiveTable, data){
+  function addRow(serverTable, receiveTable, data){
 
-  if (data.broadcaster == true){ 
+  if (data.server == true){ 
 
-  let row = broadcastTable.insertRow();
+  let row = serverTable.insertRow();
   let info = {topic: data.topic, 
   last: data.stats.tx.last,
   size: data.stats.tx.size,
@@ -140,17 +152,17 @@
   // DOM is ready by now
   (function() {
 
-  broadcastTable = document.getElementById("broadcaster");
+  serverTable = document.getElementById("server");
   receiveTable = document.getElementById("receiver");
 
-  generateTableHead(broadcastTable, bcols);
+  generateTableHead(serverTable, bcols);
   generateTableHead(receiveTable, rcols);
 
   somePackage.connect()
   setTimeout(function(){somePackage.send("-"); }, 1000);
   setInterval(function(){
 
-  deleteAllRows(broadcastTable)
+  deleteAllRows(serverTable)
   deleteAllRows(receiveTable)
   somePackage.send("-"); 
 
