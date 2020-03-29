@@ -8,6 +8,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Hub struct {
+	// Registered clients.
+	clients map[string]map[*Client]bool
+
+	// Inbound messages from the clients.
+	broadcast chan message
+
+	// Register requests from the clients.
+	register chan *Client
+
+	// Unregister requests from clients.
+	unregister chan *Client
+}
+
 // Client is a middleperson between the websocket connection and the hub.
 type Client struct {
 	hub *Hub

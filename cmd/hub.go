@@ -2,19 +2,6 @@ package cmd
 
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
-type Hub struct {
-	// Registered clients.
-	clients map[string]map[*Client]bool
-
-	// Inbound messages from the clients.
-	broadcast chan message
-
-	// Register requests from the clients.
-	register chan *Client
-
-	// Unregister requests from clients.
-	unregister chan *Client
-}
 
 func newHub() *Hub {
 	return &Hub{

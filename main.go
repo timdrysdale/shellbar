@@ -17,7 +17,7 @@
 */
 package main
 
-import "github.com/timdrysdale/crossbar/cmd"
+import "github.com/timdrysdale/shellbar/cmd"
 
 func main() {
 	cmd.Execute()

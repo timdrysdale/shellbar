@@ -25,7 +25,6 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	homedir "github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
@@ -50,18 +49,23 @@ clientBufferLength (for each client's outgoing channel)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "crossbar",
-	Short: "websocket relay with topics",
-	Long: `Crossbar is a websocket relay with topics set by the URL path, 
-and can handle binary and text messages.`,
+	Use:   "shellbar",
+	Short: "websocket relay with topics and exclusive connections",
+	Long: `Shellbar is a websocket relay with topics set by the URL path, 
+can handle binary and text messages, with one-to-one connections between 
+servers (connecting to /server/<route>, speaking gob with per-connection ID) 
+and clients (connecting to /<route>) speaking []byte.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
 
-		fmt.Printf("Devmode? %v\n", development)
-		if development {
+		addr := viper.GetString("listen")
+		development := viper.GetBool("development")
 
+		if development {
 			// development environment
+			fmt.Printf("Devmode? %v\n", development)
+			fmt.Printf("listening on %v\n", addr)
 			log.SetFormatter(&log.TextFormatter{})
 			log.SetLevel(log.TraceLevel)
 			log.SetOutput(os.Stdout)
@@ -73,10 +77,10 @@ and can handle binary and text messages.`,
 			log.SetFormatter(&log.JSONFormatter{})
 			log.SetLevel(log.WarnLevel)
 
-			file, err := os.OpenFile("crossbar.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			file, err := os.OpenFile("shellbar.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err == nil {
 				log.SetOutput(file)
-				fmt.Println("Setting log output to file")
+				//fmt.Println("Setting log output to file")
 			} else {
 				log.Info("Failed to log to file, using default stderr")
 			}
@@ -93,46 +97,22 @@ and can handle binary and text messages.`,
 		}
 
 		var wg sync.WaitGroup
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		messagesToDistribute := make(chan message, 10) //TODO make buffer length configurable
-		var topics topicDirectory
-		topics.directory = make(map[string][]clientDetails)
-		clientActionsChan := make(chan clientAction)
+
 		closed := make(chan struct{})
+
+		c := make(chan os.Signal, 1)
+
+		signal.Notify(c, os.Interrupt)
 
 		go func() {
 			for _ = range c {
-
 				close(closed)
 				wg.Wait()
 				os.Exit(1)
-
 			}
 		}()
 
-		host, err := url.Parse(listen)
-		if err != nil {
-			panic(err)
-		} else if host.Scheme == "" || host.Host == "" {
-			fmt.Println("error: listen must be an absolute URL")
-			return
-		} else if host.Scheme != "ws" {
-			fmt.Println("error: listen must begin with ws")
-			return
-		}
-		fmt.Printf("listen %v, host %v\n", listen, host)
-
-		wg.Add(3)
-		//func HandleConnections(closed <-chan struct{}, wg *sync.WaitGroup, clientActionsChan chan clientAction, messagesFromMe chan message)
-		go HandleConnections(closed, &wg, clientActionsChan, messagesToDistribute, host)
-
-		//func HandleMessages(closed <-chan struct{}, wg *sync.WaitGroup, topics *topicDirectory, messagesChan <-chan message)
-		//go HandleMessages(closed, &wg, &topics, messagesToDistribute)
-
-		//func HandleClients(closed <-chan struct{}, wg *sync.WaitGroup, topics *topicDirectory, clientActionsChan chan clientAction)
-		go HandleClients(closed, &wg, &topics, clientActionsChan)
-		wg.Wait()
+		shellbar(addr, closed, &wg) //blocking
 	},
 }
 
@@ -149,37 +129,17 @@ func init() {
 
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.crossbar.yaml)")
-	rootCmd.PersistentFlags().StringVar(&listen, "listen", "http://127.0.0.1:8080", "http://<ip>:<port> to listen on (default is http://127.0.0.1:8080)")
-	rootCmd.PersistentFlags().Int64Var(&bufferSize, "buffer", 32768, "bufferSize in bytes (default is 32,768)")
-	rootCmd.PersistentFlags().StringVar(&logFile, "log", "", "log file (default is STDOUT)")
-	rootCmd.PersistentFlags().StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
-	rootCmd.PersistentFlags().BoolVar(&development, "dev", false, "development environment")
+	rootCmd.PersistentFlags().StringVarP(&listen, "listen", "l", "127.0.0.1:8080", "http://<ip>:<port> to listen on (default is 127.0.0.1:8080)")
+	rootCmd.PersistentFlags().Int64VarP(&bufferSize, "buffer", "b", 32768, "bufferSize in bytes (default is 32,768)")
+	rootCmd.PersistentFlags().StringVarP(&logFile, "log", "f", "", "log file (default is STDOUT)")
+	rootCmd.PersistentFlags().StringVarP(&cpuprofile, "cpuprofile", "c", "", "write cpu profile to file")
+	rootCmd.PersistentFlags().BoolVarP(&development, "dev", "d", false, "development environment")
 
 }
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		// Search config in home directory with name ".crossbar" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigName(".crossbar")
-	}
-
+	viper.SetEnvPrefix("SHELLBAR")
 	viper.AutomaticEnv() // read in environment variables that match
 
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	}
 }
