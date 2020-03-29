@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,8 +17,8 @@ import (
 )
 
 func TestShellbar(t *testing.T) {
-	//suppressLog()
-	//defer displayLog()
+	suppressLog()
+	defer displayLog()
 	// setup shellbar on local (free) port
 
 	closed := make(chan struct{})
@@ -57,49 +56,54 @@ func TestShellbar(t *testing.T) {
 	time.Sleep(timeout)
 
 	payload0 := []byte("Hello from client0")
+	payload1 := []byte("Hello from client0")
+
 	mtype := websocket.TextMessage
+
 	c0.Out <- reconws.WsMessage{Data: payload0, Type: mtype}
 
-	select {
-	case <-time.After(timeout):
-		t.Errorf("timeout receiving client0 message at server")
-	case msg, ok := <-s.In:
-		if ok {
-			fmt.Printf("msg received %v", msg.Data)
+	_ = expectOneGob(s.In, payload0, timeout, t)
 
-			bufReader := bytes.NewReader(msg.Data)
-			decoder := gob.NewDecoder(bufReader)
-			var sr srgob.Message
-			err = decoder.Decode(&sr)
-			if err != nil {
-				log.WithField("Error", err.Error()).Error("Decoding gob from relay")
-			} else {
-				// send only the payload to the non-server client, not a gob
-				if bytes.Compare(sr.Data, payload0) != 0 {
-					t.Errorf("Messages don't match: Want: %s\nGot : %s\n", payload0, sr.Data)
-				}
-			}
+	c1.Out <- reconws.WsMessage{Data: payload1, Type: mtype}
 
-		} else {
-			t.Error("Channel problem")
-		}
-	}
-	/*
-		reply := <-r.In
+	_ = expectOneGob(s.In, payload1, timeout, t)
 
-		if bytes.Compare(reply.Data, payload) != 0 {
-			t.Errorf("Got unexpected response: %s, wanted %s\n", reply.Data, payload)
-		}
-	*/
-
-	time.Sleep(1 * time.Second)
+	time.Sleep(timeout)
 
 	cancel()
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(timeout)
 
 	close(closed)
 
 	wg.Wait()
 
+}
+
+func expectOneGob(channel chan reconws.WsMessage, expected []byte, timeout time.Duration, t *testing.T) (data []byte) {
+
+	var receivedData []byte
+
+	select {
+	case <-time.After(timeout):
+		t.Errorf("timeout receiving client0 message at server")
+	case msg, ok := <-channel:
+		if ok {
+			bufReader := bytes.NewReader(msg.Data)
+			decoder := gob.NewDecoder(bufReader)
+			var sr srgob.Message
+			err := decoder.Decode(&sr)
+			if err != nil {
+				t.Errorf("Decoding gob from relay %v", err) //(log.WithField("Error", err.Error())
+			} else {
+				receivedData = sr.Data
+				if bytes.Compare(sr.Data, expected) != 0 {
+					t.Errorf("Messages don't match: Want: %s\nGot : %s\n", expected, sr.Data)
+				}
+			}
+		} else {
+			t.Error("Channel problem")
+		}
+	}
+	return receivedData
 }

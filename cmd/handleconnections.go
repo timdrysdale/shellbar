@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -262,7 +261,7 @@ func (c *Client) readPump() {
 			} else {
 				// send the gob to the server (id "*")
 				c.hub.broadcast <- message{sender: *c, data: buf.Bytes(), mt: mt, ID: "*"}
-				log.WithField("Payload", buf.Bytes()).Info("Encoded gob to be sent") // TODO delete for performance
+				//log.WithField("Payload", buf.Bytes()).Info("Encoded gob to be sent") // TODO delete for performance
 				didSend = true
 			}
 
@@ -354,7 +353,6 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 	server := false
 
 	topic := slashify(r.URL.Path)
-	fmt.Printf("Topic %s\n", topic)
 	if strings.HasPrefix(topic, "/serve/") {
 		// we're a server, so we get all messages, and use srgob
 		server = true
