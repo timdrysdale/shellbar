@@ -2,6 +2,7 @@ package cmd
 
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
+import log "github.com/sirupsen/logrus"
 
 func newHub() *Hub {
 	return &Hub{
@@ -18,6 +19,7 @@ func (h *Hub) run() {
 		case client := <-h.register:
 			if _, ok := h.clients[client.topic]; !ok {
 				h.clients[client.topic] = make(map[*Client]bool)
+				log.WithFields(log.Fields{"ID": client.ID, "topic": client.topic}).Info("Registered")
 			}
 			h.clients[client.topic][client] = true
 		case client := <-h.unregister:
@@ -31,6 +33,7 @@ func (h *Hub) run() {
 				if client.ID == message.ID {
 					select {
 					case client.send <- message:
+						log.WithFields(log.Fields{"ID": client.ID, "topic": client.topic, "payload": message}).Info("Send") //TODO delete for performance
 					default:
 						close(client.send)
 						delete(h.clients[topic], client)

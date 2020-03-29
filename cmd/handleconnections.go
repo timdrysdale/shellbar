@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -211,15 +212,17 @@ func (c *Client) readPump() {
 			break
 		}
 
-		var buf bytes.Buffer
+		var sr srgob.Message
 
 		didSend := false //only update stats for this if incoming message handled errorfree
 
-		if c.server {
+		if c.server { //message from a server (will be in a gob)
 			// decode the gob and identify the recipient ID
 			// new en/decoders are cheap, renew every message
-			decoder := gob.NewDecoder(&buf)
-			var sr srgob.Message
+
+			bufReader := bytes.NewReader(data)
+			decoder := gob.NewDecoder(bufReader)
+
 			err = decoder.Decode(&sr)
 
 			if err != nil {
@@ -230,11 +233,23 @@ func (c *Client) readPump() {
 				didSend = true
 			}
 
-		} else {
+		} else { //message from a client, data will just be []byte
+			var buf bytes.Buffer
+			/*
+				decoder := gob.NewDecoder(&buf)
+				err = decoder.Decode(&sr)
+
+				if err != nil {
+					log.WithField("Error", err.Error()).Error("Decoding gob from server")
+				} else {
+					// send only the payload to the non-server client, not a gob
+					c.hub.broadcast <- message{sender: *c, data: sr.Data, mt: mt, ID: sr.ID}
+					didSend = true
+				}*/
 			// we're a connector sending to the server
 			// gob up the payload with connector's ID
 
-			sr := srgob.Message{
+			sr = srgob.Message{
 				ID:   c.ID,
 				Data: data,
 			}
@@ -247,6 +262,7 @@ func (c *Client) readPump() {
 			} else {
 				// send the gob to the server (id "*")
 				c.hub.broadcast <- message{sender: *c, data: buf.Bytes(), mt: mt, ID: "*"}
+				log.WithField("Payload", buf.Bytes()).Info("Encoded gob to be sent") // TODO delete for performance
 				didSend = true
 			}
 
@@ -338,12 +354,12 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 	server := false
 
 	topic := slashify(r.URL.Path)
-
+	fmt.Printf("Topic %s\n", topic)
 	if strings.HasPrefix(topic, "/serve/") {
 		// we're a server, so we get all messages, and use srgob
 		server = true
 		// convert topic so we write to those receiving clients
-		topic = strings.Replace(topic, "/serve", "/", 1)
+		topic = strings.Replace(topic, "/serve/", "/", 1)
 		ID = "*" //we want to receive every message
 	}
 

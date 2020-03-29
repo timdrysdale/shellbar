@@ -108,11 +108,15 @@ and clients (connecting to /<route>) speaking []byte.`,
 			for _ = range c {
 				close(closed)
 				wg.Wait()
-				os.Exit(1)
+				os.Exit(0)
 			}
 		}()
 
-		shellbar(addr, closed, &wg) //blocking
+		wg.Add(1)
+
+		go shellbar(addr, closed, &wg)
+
+		wg.Wait()
 	},
 }
 
